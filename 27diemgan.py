@@ -12,7 +12,7 @@ HIEU_CHART = {0: [0,11,22,33,44,55,66,77,88,99], 1: [9,10,21,32,43,54,65,76,87,9
               6: [4,15,26,37,48,59,60,71,82,93], 7: [3,14,25,36,47,58,69,70,81,92],
               8: [2,13,24,35,46,57,68,79,80,91], 9: [1,12,23,34,45,56,67,78,89,90]}
 
-st.set_page_config(page_title="App Săn Gan 27 Giải", layout="wide")
+st.set_page_config(page_title="App Săn Gan Cao Cấp", layout="wide")
 
 if 'db' not in st.session_state:
     st.session_state.db = {"bang_b_points": [], "current_raw": [], "history": []}
@@ -34,8 +34,8 @@ def analyze_number(num):
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Cấu hình Săn Gan")
-    uploaded_file = st.file_uploader("1. Tải ảnh kết quả", type=["png", "jpg", "jpeg"])
-    uploaded_json = st.file_uploader("📂 Nạp dữ liệu", type=["json"])
+    uploaded_file = st.file_uploader("1. Tải kết quả bảng ảnh", type=["png", "jpg", "jpeg"])
+    uploaded_json = st.file_uploader("📂 Tìm kiếm dữ liệu cũ", type=["json"])
     if uploaded_json:
         st.session_state.db = json.load(uploaded_json)
     run_btn = st.button("🚀 CẬP NHẬT TỔNG LỰC", use_container_width=True)
@@ -60,23 +60,20 @@ if uploaded_file and run_btn:
         raw = all_digits_list
         gdb_2_so = all_loto[0]
         
-        # Thống kê hiệu quả kỳ cũ
-        n_10, n_20, n_30, rank_val = "N/A", "N/A", "N/A", "N/A"
+        # Thống kê hiệu quả dựa trên dàn cũ
+        n10, n20, n30, n40, n50, rank_val, loai_val = ["N/A"]*7
+
         if st.session_state.db["current_raw"] and st.session_state.db["bang_b_points"]:
             old_raw, old_pts = st.session_state.db["current_raw"], st.session_state.db["bang_b_points"]
             df_temp = pd.DataFrame([{"S": old_raw[i], **old_pts[i]} for i in range(len(old_raw))])
             
-            # Logic Bảng C "Săn Gan": Chỉ cộng những ô > 0
+            # Bảng C Săn Gan (>0)
             list_c_temp = []
             for i in range(10):
                 m = df_temp[df_temp["S"] == i]
                 list_c_temp.append({
-                    "S":i, 
-                    "d": m.loc[m["dau"] > 0, "dau"].sum(),
-                    "đ": m.loc[m["duoi"] > 0, "duoi"].sum(),
-                    "t": m.loc[m["tong"] > 0, "tong"].sum(),
-                    "h": m.loc[m["hieu"] > 0, "hieu"].sum(),
-                    "c": m.loc[m["cham"] > 0, "cham"].sum()
+                    "S":i, "d":m.loc[m["dau"]>0, "dau"].sum(), "đ":m.loc[m["duoi"]>0, "duoi"].sum(),
+                    "t":m.loc[m["tong"]>0, "tong"].sum(), "h":m.loc[m["hieu"]>0, "hieu"].sum(), "c":m.loc[m["cham"]>0, "cham"].sum()
                 })
             df_c_temp = pd.DataFrame(list_c_temp)
             
@@ -87,16 +84,18 @@ if uploaded_file and run_btn:
                 score += (df_c_temp.iloc[t["dau"]]["c"] * 2) if t["dau"]==t["duoi"] else (df_c_temp.iloc[t["dau"]]["c"] + df_c_temp.iloc[t["duoi"]]["c"])
                 dan_scores.append({"SO": f"{i:02d}", "DIEM": score})
             
-            # SẮP XẾP CAO XUỐNG THẤP
             df_rank = pd.DataFrame(dan_scores).sort_values("DIEM", ascending=False).reset_index(drop=True)
-            rank_found = df_rank[df_rank["SO"] == f"{gdb_2_so:02d}"].index
-            if len(rank_found) > 0: rank_val = int(rank_found[0]) + 1
             
-            n_10 = f"{sum(1 for n in all_loto if f'{n:02d}' in df_rank.head(10)['SO'].tolist())}/10"
-            n_20 = f"{sum(1 for n in all_loto if f'{n:02d}' in df_rank.head(20)['SO'].tolist())}/20"
-            n_30 = f"{sum(1 for n in all_loto if f'{n:02d}' in df_rank.head(30)['SO'].tolist())}/30"
+            rank_f = df_rank[df_rank["SO"] == f"{gdb_2_so:02d}"].index
+            if len(rank_f) > 0:
+                rank_val = int(rank_f[0]) + 1
+                loai_val = "A" if rank_val <= 70 else "T"
+            
+            # Thống kê nổ các dàn
+            def count_hits(n): return f"{sum(1 for l in all_loto if f'{l:02d}' in df_rank.head(n)['SO'].tolist())}/{n}"
+            n10, n20, n30, n40, n50 = count_hits(10), count_hits(20), count_hits(30), count_hits(40), count_hits(50)
 
-        # CẬP NHẬT ĐIỂM MỚI (Bảng B giữ nguyên logic)
+        # Cập nhật điểm Bảng B
         targets = [analyze_number(n) for n in all_loto]
         s_dau, s_duoi, s_tong, s_hieu = {t["dau"] for t in targets}, {t["duoi"] for t in targets}, {t["tong"] for t in targets}, {t["hieu"] for t in targets}
         s_cham = set(); [s_cham.update(t["cham"]) for t in targets]
@@ -113,45 +112,56 @@ if uploaded_file and run_btn:
                 p["hieu"] = 0 if val in s_hieu else p["hieu"] + 1
                 p["cham"] = 0 if val in s_cham else p["cham"] + 1
 
-        st.session_state.db["history"].insert(0, {"Kỳ": len(st.session_state.db["history"]) + 1, "GĐB": f"{gdb_2_so:02d}", "Vị trí": rank_val, "Nổ 10": n_10, "Nổ 20": n_20, "Nổ 30": n_30})
+        # Lưu Lịch sử
+        st.session_state.db["history"].insert(0, {
+            "Kỳ": len(st.session_state.db["history"]) + 1, "GĐB": f"{gdb_2_so:02d}", 
+            "Vị trí": rank_val, "Loại": loai_val, 
+            "Nổ 10": n10, "Nổ 20": n20, "Nổ 30": n30, "Nổ 40": n40, "Nổ 50": n50
+        })
         st.session_state.db["current_raw"] = raw
         st.session_state.db["last_27"] = all_loto
-        st.success(f"Đã nạp dữ liệu. GĐB: {gdb_2_so:02d}")
+        st.success(f"Đã cập nhật 27 giải. GĐB: {gdb_2_so:02d}")
 
 # --- HIỂN THỊ ---
 if st.session_state.db.get("current_raw"):
     if "last_27" in st.session_state.db:
-        st.write(f"**Giải Đặc Biệt:** {st.session_state.db['last_27'][0]:02d} | **Lô về:** {', '.join([f'{n:02d}' for n in st.session_state.db['last_27'][1:]])}")
+        l = st.session_state.db["last_27"]
+        st.write(f"**Giải Đặc Biệt:** `{l[0]:02d}` | **26 Giải Lô:** {', '.join([f'{x:02d}' for x in l[1:]])}")
 
     raw, pts = st.session_state.db["current_raw"], st.session_state.db["bang_b_points"]
     df_b = pd.DataFrame([{"SO VE": raw[i], **pts[i]} for i in range(len(raw))])
     
-    # Bảng C: Tổng điểm các ô > 0
     list_c = []
     for i in range(10):
         m = df_b[df_b["SO VE"] == i]
         list_c.append({"S": i, "T ĐẦU": m.loc[m["dau"]>0, "dau"].sum(), "T ĐUÔI": m.loc[m["duoi"]>0, "duoi"].sum(), "T TỔNG": m.loc[m["tong"]>0, "tong"].sum(), "T HIỆU": m.loc[m["hieu"]>0, "hieu"].sum(), "T CHẠM": m.loc[m["cham"]>0, "cham"].sum()})
     df_c = pd.DataFrame(list_c)
 
-    dan_final = []
+    dan_f = []
     for i in range(100):
         t = analyze_number(i)
         score = df_c.iloc[t["dau"]]["T ĐẦU"] + df_c.iloc[t["duoi"]]["T ĐUÔI"] + df_c.iloc[t["tong"]]["T TỔNG"] + df_c.iloc[t["hieu"]]["T HIỆU"]
         score += (df_c.iloc[t["dau"]]["T CHẠM"] * 2) if t["dau"]==t["duoi"] else (df_c.iloc[t["dau"]]["T CHẠM"] + df_c.iloc[t["duoi"]]["T CHẠM"])
-        dan_final.append({"SO": f"{i:02d}", "DIEM": int(score)})
+        dan_f.append({"SO": f"{i:02d}", "DIEM": int(score)})
     
-    df_dan = pd.DataFrame(dan_final).sort_values("DIEM", ascending=False)
+    df_dan = pd.DataFrame(dan_f).sort_values("DIEM", ascending=False)
 
     st.write("### 🔥 DÀN SĂN GAN (CAO ➡️ THẤP)")
     c1, c2 = st.columns(2)
-    with c1: st.text_area("Dàn 1:", value=" ".join(df_dan.head(49)["SO"].tolist()), height=120)
-    with c2: st.text_area("Dàn Siêu Phẩm 10:", value=" ".join(df_dan.head(10)["SO"].tolist()), height=120)
+    with c1:
+        num1 = st.number_input("Số quân Dàn 1:", 1, 100, 49)
+        st.text_area("Dàn săn gan:", value=" ".join(df_dan.head(num1)["SO"].tolist()), height=150)
+    with c2:
+        num2 = st.number_input("Số quân Dàn 2 (Siêu phẩm):", 1, 100, 10)
+        st.text_area("Dàn siêu phẩm:", value=" ".join(df_dan.head(num2)["SO"].tolist()), height=150)
 
     t_hist, t_c, t_b = st.tabs(["🕒 Lịch sử", "🗂️ Bảng C & D", "🎲 Bảng B"])
-    with t_hist: st.dataframe(pd.DataFrame(st.session_state.db["history"]), use_container_width=True)
+    with t_hist:
+        st.subheader("Bảng Lịch sử & Thống kê Tỉ lệ Nổ")
+        st.dataframe(pd.DataFrame(st.session_state.db["history"]), use_container_width=True, hide_index=True)
     with t_c:
-        st.subheader("Bảng C (Chỉ tính vị trí có điểm > 0)")
         st.table(df_c)
-        st.subheader("Bảng D (Sắp xếp Cao xuống Thấp)")
         st.dataframe(df_dan.set_index("SO").T, use_container_width=True)
     with t_b: st.dataframe(df_b, use_container_width=True)
+
+    st.sidebar.download_button("💾 SAO LƯU", json.dumps(st.session_state.db), "data_gan_pro.json")
